@@ -14,7 +14,8 @@ import {
   ClockIcon,
   TruckIcon,
   PlusIcon,
-  RotateCcwIcon
+  RotateCcwIcon,
+  PackageIcon
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import { useMaterialRequests } from '@/hooks/useMaterialRequests';
@@ -33,6 +34,7 @@ const RegionalManagerDashboard = () => {
     approved: requests.filter(r => r.status === 'approved' && r.requestType !== 'MRC').length,
     pending: requests.filter(r => r.status === 'pending').length,
     inTransit: requests.filter(r => r.status === 'in-transit').length,
+    partiallyDelivered: requests.filter(r => r.status === 'delivered' && r.items.some(item => item.receivedAt) && r.items.some(item => !item.receivedAt)).length,
   };
 
   const approvedRequests = requests.filter(r => r.status === 'approved' && r.requestType !== 'MRC');
@@ -67,16 +69,33 @@ const RegionalManagerDashboard = () => {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants = {
-      'pending': 'secondary',
-      'approved': 'default',
-      'in-process': 'outline',
-      'in-transit': 'outline',
-      'delivered': 'default',
-      'rejected': 'destructive'
-    } as const;
+    const colors: Record<string, string> = {
+      'pending': 'bg-yellow-100 text-yellow-800',
+      'approved': 'bg-green-100 text-green-800',
+      'in-process': 'bg-indigo-100 text-indigo-800',
+      'in-transit': 'bg-blue-100 text-blue-800',
+      'delivered': 'bg-green-100 text-green-800',
+      'partially-delivered': 'bg-yellow-100 text-yellow-800',
+      'rejected': 'bg-red-100 text-red-800',
+    };
     
-    return <Badge variant={variants[status as keyof typeof variants] || 'secondary'}>{status}</Badge>;
+    return <Badge className={colors[status] || 'bg-gray-100 text-gray-800'}>{status.replace('-', ' ')}</Badge>;
+  };
+
+  const getActualStatus = (request: any) => {
+    if (request.status === 'delivered') {
+      const receivedItems = request.items.filter((item: any) => item.receivedAt);
+      const totalItems = request.items.length;
+      
+      if (receivedItems.length === 0) {
+        return 'delivered';
+      } else if (receivedItems.length < totalItems) {
+        return 'partially-delivered';
+      } else {
+        return 'delivered';
+      }
+    }
+    return request.status;
   };
 
   const getUrgencyBadge = (urgency: string) => {
@@ -93,7 +112,8 @@ const RegionalManagerDashboard = () => {
   const COLORS = [
     'hsl(var(--primary))',     // In Process
     'hsl(220 100% 60%)',       // In Transit
-    'hsl(142 76% 36%)'         // Delivered
+    'hsl(142 76% 36%)',        // Delivered
+    'hsl(45 100% 50%)'         // Partially Delivered
   ];
 
   return (
@@ -114,7 +134,7 @@ const RegionalManagerDashboard = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <StatsCard
             title="Total Requests"
             value={stats.total}
@@ -138,6 +158,12 @@ const RegionalManagerDashboard = () => {
             value={stats.inTransit}
             icon={TruckIcon}
             description="Currently shipping"
+          />
+          <StatsCard
+            title="Partially Delivered"
+            value={stats.partiallyDelivered}
+            icon={PackageIcon}
+            description="Items partially received"
           />
         </div>
 
@@ -198,7 +224,7 @@ const RegionalManagerDashboard = () => {
                             <TableCell>{request.title}</TableCell>
                             <TableCell>{request.requestedBy}</TableCell>
                             <TableCell>{new Date(request.createdAt).toLocaleDateString()}</TableCell>
-                            <TableCell>{getStatusBadge(request.status)}</TableCell>
+                            <TableCell>{getStatusBadge(getActualStatus(request))}</TableCell>
                             <TableCell>{request.items.reduce((s, i) => s + (i.quantity || 0), 0)}</TableCell>
                             <TableCell>
                               <Button
@@ -231,6 +257,7 @@ const RegionalManagerDashboard = () => {
                         <SelectItem value="approved">Approved Only</SelectItem>
                         <SelectItem value="in-transit">In-Transit Only</SelectItem>
                         <SelectItem value="delivered">Delivered Only</SelectItem>
+                        <SelectItem value="partially-delivered">Partially Delivered Only</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -274,7 +301,7 @@ const RegionalManagerDashboard = () => {
                             <TableCell>{request.title}</TableCell>
                             <TableCell>{request.requestedBy}</TableCell>
                             <TableCell>{new Date(request.createdAt).toLocaleDateString()}</TableCell>
-                            <TableCell>{getStatusBadge(request.status)}</TableCell>
+                            <TableCell>{getStatusBadge(getActualStatus(request))}</TableCell>
                             <TableCell>{request.items.reduce((s, i) => s + (i.quantity || 0), 0)}</TableCell>
                             <TableCell>
                               <Button
@@ -329,7 +356,7 @@ const RegionalManagerDashboard = () => {
                             <TableCell>{request.title}</TableCell>
                             <TableCell>{request.requestedBy}</TableCell>
                             <TableCell>{new Date(request.createdAt).toLocaleDateString()}</TableCell>
-                            <TableCell>{getStatusBadge(request.status)}</TableCell>
+                            <TableCell>{getStatusBadge(getActualStatus(request))}</TableCell>
                             <TableCell>{request.items.reduce((s, i) => s + (i.quantity || 0), 0)}</TableCell>
                             <TableCell>
                               <Button
@@ -433,7 +460,8 @@ const RegionalManagerDashboard = () => {
                     data={[
                       { status: 'in-process', count: requests.filter(r => r.status === 'in-process').length },
                       { status: 'in-transit', count: requests.filter(r => r.status === 'in-transit').length },
-                      { status: 'delivered', count: requests.filter(r => r.status === 'delivered').length },
+                      { status: 'delivered', count: requests.filter(r => r.status === 'delivered' && !r.items.some(item => item.receivedAt)).length },
+                      { status: 'partially-delivered', count: requests.filter(r => r.status === 'delivered' && r.items.some(item => item.receivedAt) && r.items.some(item => !item.receivedAt)).length },
                     ]}
                     cx="50%"
                     cy="50%"
@@ -443,7 +471,7 @@ const RegionalManagerDashboard = () => {
                     fill="#8884d8"
                     dataKey="count"
                   >
-                    {['in-process','in-transit','delivered'].map((_, index) => (
+                    {['in-process','in-transit','delivered','partially-delivered'].map((_, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>

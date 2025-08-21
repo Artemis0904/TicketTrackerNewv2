@@ -52,7 +52,10 @@ const StoreManagerDashboard = () => {
     
     // Apply status filter
     if (selectedStatuses.length > 0) {
-      filtered = filtered.filter(request => selectedStatuses.includes(request.status as StatusOption));
+      filtered = filtered.filter(request => {
+        const normalizedStatus = (request.status as string) === 'mcr-needed' ? 'mrc-needed' : request.status;
+        return selectedStatuses.includes(normalizedStatus as StatusOption);
+      });
     }
     
     return filtered;
@@ -73,7 +76,11 @@ const StoreManagerDashboard = () => {
   // Get available statuses for the filter dropdown
   const availableStatuses = useMemo(() => {
     const statuses = new Set(requests.map(r => r.status).filter(Boolean));
-    return Array.from(statuses).sort() as string[];
+    const normalizedStatuses = Array.from(statuses).map(status => {
+      const statusStr = status as string;
+      return statusStr === 'mcr-needed' ? 'mrc-needed' : status;
+    });
+    return Array.from(new Set(normalizedStatuses)).sort() as string[];
   }, [requests]);
 
   // Helper functions for multi-select

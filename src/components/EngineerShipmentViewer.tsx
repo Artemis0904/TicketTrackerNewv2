@@ -193,7 +193,7 @@ export default function EngineerShipmentViewer({ open, onOpenChange, request }: 
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
           <Button 
             onClick={onConfirmReceived} 
-            disabled={request.items.length === 0 || request.items.every(item => item.receivedAt)}
+            disabled={request.items.length === 0 || request.items.every(item => item.receivedAt) || !Object.values(receivedMap).some(Boolean)}
           >
             Received
           </Button>
