@@ -58,11 +58,27 @@ export function useMaterialRequests() {
     queryClient.invalidateQueries({ queryKey: ['material-requests'] });
   };
 
+  const updateRequest = async (id: string, updates: Partial<MaterialRequest>) => {
+    const { error } = await supabase
+      .from('material_requests')
+      .update({
+        items: updates.items,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    // Invalidate and refetch
+    queryClient.invalidateQueries({ queryKey: ['material-requests'] });
+  };
+
   return {
     requests,
     isLoading,
     error,
     deleteRequest,
+    updateRequest,
     refreshRequests: () => queryClient.invalidateQueries({ queryKey: ['material-requests'] }),
   };
 }

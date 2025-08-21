@@ -20,6 +20,7 @@ import { useAppStore } from '@/store/appStore';
 import { useMaterialRequests } from '@/hooks/useMaterialRequests';
 import MRFormDialogRM from '@/components/MRFormDialogRM';
 import RMRequestEditor from '@/components/RMRequestEditor';
+import ApprovedTicketViewer from '@/components/ApprovedTicketViewer';
 import { Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -40,6 +41,7 @@ const RegionalManagerDashboard = () => {
   const mrcRequests = requests.filter(r => r.requestType === 'MRC');
 
   const [editorOpen, setEditorOpen] = React.useState(false);
+  const [viewerOpen, setViewerOpen] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [statusFilter, setStatusFilter] = React.useState<string>('all');
   const selectedRequest = React.useMemo(() => requests.find(r => r.id === selectedId) || null, [selectedId, requests]);
@@ -362,7 +364,14 @@ const RegionalManagerDashboard = () => {
             <CardContent>
               <div className="space-y-3">
                 {approvedRequests.map((request) => (
-                  <div key={request.id} className="flex justify-between items-center p-3 border rounded-lg">
+                  <div 
+                    key={request.id} 
+                    className="flex justify-between items-center p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => {
+                      setSelectedId(request.id);
+                      setViewerOpen(true);
+                    }}
+                  >
                     <div>
                       <p className="font-medium">{request.title}</p>
                       <p className="text-sm text-muted-foreground">By {request.requestedBy}</p>
@@ -388,7 +397,14 @@ const RegionalManagerDashboard = () => {
             <CardContent>
               <div className="space-y-3">
                 {pendingRequests.map((request) => (
-                  <div key={request.id} className="flex justify-between items-center p-3 border rounded-lg">
+                  <div 
+                    key={request.id} 
+                    className="flex justify-between items-center p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => {
+                      setSelectedId(request.id);
+                      setViewerOpen(true);
+                    }}
+                  >
                     <div>
                       <p className="font-medium">{request.title}</p>
                       <p className="text-sm text-muted-foreground">By {request.requestedBy}</p>
@@ -440,11 +456,18 @@ const RegionalManagerDashboard = () => {
         </Card>
       </div>
       {selectedRequest && (
-        <RMRequestEditor
-          open={editorOpen}
-          onOpenChange={(o) => { setEditorOpen(o); if (!o) setSelectedId(null); }}
-          request={selectedRequest}
-        />
+        <>
+          <RMRequestEditor
+            open={editorOpen}
+            onOpenChange={(o) => { setEditorOpen(o); if (!o) setSelectedId(null); }}
+            request={selectedRequest}
+          />
+          <ApprovedTicketViewer
+            open={viewerOpen}
+            onOpenChange={(o) => { setViewerOpen(o); if (!o) setSelectedId(null); }}
+            request={selectedRequest}
+          />
+        </>
       )}
     </RegionalManagerLayout>
   );

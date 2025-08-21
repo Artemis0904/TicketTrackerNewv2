@@ -11,8 +11,20 @@ const Reports = () => {
   const navigate = useNavigate();
   const { requests, isLoading } = useMaterialRequests();
   
-  // Filter for regular material requests (not MRC)
+  // Filter for regular material requests (not MRC) and flatten into individual items
   const materialRequests = requests.filter(r => r.requestType !== 'MRC');
+  
+  // Flatten requests into individual items
+  const flattenedItems = materialRequests.flatMap(request => 
+    request.items.map(item => ({
+      ...request,
+      currentItem: item,
+      // Generate display ID based on seqId or fallback to request ID
+      displayId: request.seqId 
+        ? `MR-${request.seqId.toString().padStart(3, '0')}`
+        : request.id.slice(-8)
+    }))
+  );
 
   return (
     <div className="space-y-6">
@@ -66,15 +78,15 @@ const Reports = () => {
                     <TableRow>
                       <TableCell colSpan={7} className="text-center">Loading...</TableCell>
                     </TableRow>
-                  ) : materialRequests.length === 0 ? (
+                  ) : flattenedItems.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center">No material requests found</TableCell>
                     </TableRow>
                   ) : (
-                    materialRequests.map((request) => (
-                      <TableRow key={request.id}>
-                        <TableCell>{request.requestedBy}</TableCell>
-                        <TableCell>{format(new Date(request.createdAt), 'MMM dd, yyyy')}</TableCell>
+                    flattenedItems.map((item, index) => (
+                      <TableRow key={`${item.id}-${index}`}>
+                        <TableCell>{item.requestedBy} ({item.displayId})</TableCell>
+                        <TableCell>{format(new Date(item.createdAt), 'MMM dd, yyyy')}</TableCell>
                         <TableCell>Data will be added later</TableCell>
                         <TableCell>Data will be added later</TableCell>
                         <TableCell>Data will be added later</TableCell>

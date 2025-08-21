@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { MaterialItemRow, MaterialRequest, useAppStore, SourceOption } from '@/store/appStore';
 import { toast } from 'sonner';
 import { notify } from '@/lib/notifications';
+import { format } from 'date-fns';
 
 interface SMReturnViewerProps {
   open: boolean;
@@ -32,13 +33,28 @@ export default function SMReturnViewer({ open, onOpenChange, request }: SMReturn
   const [tracking, setTracking] = useState<string>(request.trackingNo || '');
   const [courierName, setCourierName] = useState<string>('');
 
+  // Check if the request is delivered (read-only mode)
+  // For return requests, only delivered status should be read-only
+  // In-transit requests should be editable so store manager can mark items as received
+  const isReadOnly = request.status === 'delivered';
+
+  // Update local state when request data changes
   useEffect(() => {
-    if (open) {
-      // Only reset rows if they don't have receivedAt timestamps (to preserve received status)
-      const hasReceivedItems = request.items?.some(item => item.receivedAt);
-      if (!hasReceivedItems) {
-        setRows(request.items || []);
-      }
+    if (open && request) {
+      // Initialize rows with receivedQty set to sentQty by default if not already received
+      const initializedRows = (request.items || []).map(item => {
+        // If item is not yet received (no receivedAt timestamp), set receivedQty to sentQty for display
+        // but don't mark as received (no receivedAt timestamp)
+        if (!item.receivedAt && !item.receivedQty) {
+          return {
+            ...item,
+            receivedQty: item.sentQty ?? item.quantity ?? 0
+          };
+        }
+        return item;
+      });
+      
+      setRows(initializedRows);
       setMode(request.transportMode as TransportMode | undefined);
       setEdt(request.edt ? new Date(request.edt) : undefined);
       setTracking(request.trackingNo || '');
@@ -48,16 +64,30 @@ export default function SMReturnViewer({ open, onOpenChange, request }: SMReturn
 
   const canSave = useMemo(() => true, []);
 
+  // Check if all received items have MCR numbers entered
+  const canMarkAsReceived = useMemo(() => {
+    const receivedItems = rows.filter(row => row.receivedQty && row.receivedQty > 0);
+    if (receivedItems.length === 0) return false; // No items received yet
+    
+    // Check if all received items have MCR numbers
+    return receivedItems.every(item => item.mrcNo && item.mrcNo.trim() !== '');
+  }, [rows]);
+
   const onChangeRow = (id: string, patch: Partial<MaterialItemRow>) =>
     setRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
 
-  const onConfirm = () => {
-    updateRequest(request.id, { items: rows });
-    toast.success('Updates saved.');
-    onOpenChange(false);
+  const onConfirm = async () => {
+    try {
+      await updateRequest(request.id, { items: rows });
+      toast.success('Updates saved.');
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Error saving updates:', error);
+      toast.error('Failed to save updates');
+    }
   };
 
-  const onConfirmSend = () => {
+  const onConfirmSend = async () => {
     if (!mode) {
       toast.error('Please select Mode of transport.');
       return;
@@ -75,60 +105,106 @@ export default function SMReturnViewer({ open, onOpenChange, request }: SMReturn
       return;
     }
     
-    // First save the updated items (what the Confirm button was doing)
-    updateRequest(request.id, { items: rows });
-    
-    // Then update transport details and mark as sent
-    updateRequest(request.id, {
-      transportMode: mode,
-      edt: edt ? edt.toISOString() : undefined,
-      trackingNo: tracking.trim() || undefined,
-      sentAt: new Date().toISOString(),
-    });
-    updateStatus(request.id, 'in-transit');
-    toast.success('Request updated and marked as sent.');
-    setSendOpen(false);
-    onOpenChange(false);
+    try {
+      // First save the updated items (what the Confirm button was doing)
+      await updateRequest(request.id, { items: rows });
+      
+      // Then update transport details and mark as sent
+      await updateRequest(request.id, {
+        transportMode: mode,
+        edt: edt ? edt.toISOString() : undefined,
+        trackingNo: tracking.trim() || undefined,
+        sentAt: new Date().toISOString(),
+      });
+      await updateStatus(request.id, 'in-transit');
+      toast.success('Request updated and marked as sent.');
+      setSendOpen(false);
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Error updating request:', error);
+      toast.error('Failed to update request');
+    }
   };
 
-  const onConfirmReceived = () => {
-    // Use the actual received quantities from the form
-    console.log('Saving items with received status:', rows);
-    updateRequest(request.id, { items: rows });
-    updateStatus(request.id, 'delivered');
-    toast.success('Request marked as received.');
-    setSendOpen(false);
-    onOpenChange(false);
+  const onConfirmReceived = async () => {
+    try {
+      // Use the actual received quantities from the form
+      console.log('Saving items with received status:', rows);
+      await updateRequest(request.id, { items: rows });
+      await updateStatus(request.id, 'delivered');
+      toast.success('Request marked as received.');
+      setSendOpen(false);
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Error marking as received:', error);
+      toast.error('Failed to mark as received');
+    }
   };
 
       return (
-      <Dialog open={open} onOpenChange={(isOpen) => {
-        if (!isOpen) {
-          // Save changes when closing (either via X button or Close button)
-          console.log('Saving changes on dialog close:', rows);
-          console.log('Items being saved to database:', JSON.stringify(rows, null, 2));
-          updateRequest(request.id, { items: rows });
+      <Dialog open={open} onOpenChange={async (isOpen) => {
+        if (!isOpen && !isReadOnly) {
+          // Save changes when closing (either via X button or Close button) only if not read-only
+          try {
+            await updateRequest(request.id, { items: rows });
+          } catch (error) {
+            console.error('Error saving changes on dialog close:', error);
+            toast.error('Failed to save changes');
+          }
         }
         onOpenChange(isOpen);
       }}>
       <DialogContent className="max-w-6xl">
                  <DialogHeader>
-           <DialogTitle>Return Details</DialogTitle>
+           <DialogTitle>
+             Return Details
+             {isReadOnly && <span className="text-sm font-normal text-muted-foreground ml-2">(Read Only)</span>}
+           </DialogTitle>
          </DialogHeader>
 
         <div className="space-y-4">
           <div className="rounded-md border">
             <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-16">Sl No</TableHead>
-                  <TableHead className="min-w-[200px]">Item Desc</TableHead>
-                  <TableHead className="w-40">Sent Qty</TableHead>
-                  <TableHead className="w-40">Received Qty</TableHead>
-                  <TableHead className="w-40">MCR NO.</TableHead>
-                  <TableHead className="w-40">Received</TableHead>
-                </TableRow>
-              </TableHeader>
+                             <TableHeader>
+                 <TableRow>
+                   <TableHead className="w-16">Sl No</TableHead>
+                   <TableHead className="min-w-[200px]">Item Desc</TableHead>
+                   <TableHead className="w-40">Sent Qty</TableHead>
+                   <TableHead className="w-40">Received Qty</TableHead>
+                   <TableHead className="w-40">MRC Number</TableHead>
+                   <TableHead className="w-40">
+                     <div className="flex items-center gap-2">
+                                               <Checkbox
+                          id="select-all"
+                          checked={rows.length > 0 && rows.every(row => row.receivedAt)}
+                          disabled={isReadOnly || rows.some(row => row.receivedAt)}
+                         onCheckedChange={async (checked) => {
+                           const updatedRows = rows.map(row => ({
+                             ...row,
+                             receivedQty: checked ? (row.sentQty ?? row.quantity ?? 1) : 0,
+                             receivedAt: checked ? new Date().toISOString() : undefined,
+                             mrcNo: checked ? (row.mrcNo || '') : ''
+                           }));
+                           
+                           setRows(updatedRows);
+                           
+                           if (checked) {
+                             try {
+                               await updateRequest(request.id, { items: updatedRows });
+                               await updateStatus(request.id, 'mrc-needed');
+                               toast.success('All items marked as received. MRC NO. is now required.');
+                             } catch (error) {
+                               console.error('Error saving received status:', error);
+                               toast.error('Failed to save received status');
+                             }
+                           }
+                         }}
+                       />
+                       <Label htmlFor="select-all">Received</Label>
+                     </div>
+                   </TableHead>
+                 </TableRow>
+               </TableHeader>
               <TableBody>
                 {rows.map((row, idx) => (
                   <TableRow key={row.id}>
@@ -144,88 +220,79 @@ export default function SMReturnViewer({ open, onOpenChange, request }: SMReturn
                        </div>
                      </TableCell>
                                          <TableCell>
-                       {row.receivedQty && row.receivedQty > 0 ? (
-                         <Input
-                           type="number"
-                           min={0}
-                           value={row.receivedQty ?? ''}
-                           onChange={(e) => onChangeRow(row.id, { receivedQty: Number(e.target.value) })}
-                           placeholder="0"
-                         />
-                       ) : (
-                         <div className="px-3 py-2 text-sm text-muted-foreground">—</div>
-                       )}
+                       <Input
+                         type="number"
+                         min={0}
+                         value={row.receivedQty ?? ''}
+                         onChange={(e) => onChangeRow(row.id, { receivedQty: Number(e.target.value) })}
+                         placeholder="0"
+                         disabled={isReadOnly || !!row.receivedAt}
+                       />
                      </TableCell>
                      <TableCell>
-                       {row.receivedQty && row.receivedQty > 0 ? (
-                         <div className="space-y-1">
-                           <Input
-                             value={row.mrcNo ?? ''}
-                             onChange={(e) => onChangeRow(row.id, { mrcNo: e.target.value })}
-                             placeholder="Enter MCR No."
-                             className={row.receivedQty > 0 && !row.mrcNo ? 'border-orange-500' : ''}
-                           />
-                           {row.receivedAt && !row.mrcNo && (
-                             (() => {
-                               const daysSinceReceived = Math.floor((Date.now() - new Date(row.receivedAt).getTime()) / (1000 * 60 * 60 * 24));
-                               if (daysSinceReceived >= 7) {
-                                 return <div className="text-xs text-red-600 font-medium">⚠️ MCR NO. required (overdue)</div>;
-                               } else if (daysSinceReceived >= 5) {
-                                 return <div className="text-xs text-orange-600 font-medium">⚠️ MCR NO. due in {7 - daysSinceReceived} days</div>;
-                               }
-                               return null;
-                             })()
-                           )}
-                         </div>
-                       ) : (
-                         <div className="px-3 py-2 text-sm text-muted-foreground">—</div>
-                       )}
+                       <div className="space-y-1">
+                         <Input
+                           value={row.mrcNo ?? ''}
+                           onChange={(e) => onChangeRow(row.id, { mrcNo: e.target.value })}
+                           placeholder="Enter MRC No."
+                           className={row.receivedQty > 0 && !row.mrcNo ? 'border-orange-500' : ''}
+                           disabled={isReadOnly}
+                         />
+                         {row.receivedAt && !row.mrcNo && (
+                           (() => {
+                             const daysSinceReceived = Math.floor((Date.now() - new Date(row.receivedAt).getTime()) / (1000 * 60 * 60 * 24));
+                             if (daysSinceReceived >= 7) {
+                               return <div className="text-xs text-red-600 font-medium">⚠️ MRC NO. required (overdue)</div>;
+                             } else if (daysSinceReceived >= 5) {
+                               return <div className="text-xs text-orange-600 font-medium">⚠️ MRC NO. due in {7 - daysSinceReceived} days</div>;
+                             }
+                             return null;
+                           })()
+                         )}
+                       </div>
                      </TableCell>
                      <TableCell>
                        <div className="flex items-center gap-2">
-                                                   <Checkbox
-                            id={`chk-${row.id}`}
-                            checked={row.receivedQty ? row.receivedQty > 0 : false}
-                            disabled={row.receivedQty ? row.receivedQty > 0 : false}
-                                                         onCheckedChange={async (checked) => {
-                               if (row.receivedQty && row.receivedQty > 0) {
-                                 // Item is already received, don't allow unchecking
-                                 return;
+                         <Checkbox
+                           id={`chk-${row.id}`}
+                           checked={!!row.receivedAt}
+                           disabled={isReadOnly || !!row.receivedAt}
+                           onCheckedChange={async (checked) => {
+                             const receivedQty = checked ? (row.sentQty ?? row.quantity ?? 1) : 0;
+                             const receivedAt = checked ? new Date().toISOString() : undefined;
+                             
+
+                             
+                             // Update local state first
+                             const updatedRows = rows.map(r => 
+                               r.id === row.id 
+                                 ? { ...r, receivedQty, receivedAt, mrcNo: checked ? (r.mrcNo || '') : '' }
+                                 : r
+                             );
+                             
+                             setRows(updatedRows);
+                             
+                             // Immediately save to database and update status
+                             if (checked) {
+                               try {
+                                 // Save the updated items
+                                 await updateRequest(request.id, { items: updatedRows });
+                                 
+                                 // Update status to mrc-needed
+                                 await updateStatus(request.id, 'mrc-needed');
+                                 
+
+                                 toast.success('Item marked as received. MRC NO. is now required.');
+                               } catch (error) {
+                                 console.error('Error saving received status:', error);
+                                 toast.error('Failed to save received status');
                                }
-                               
-                               const receivedQty = checked ? (row.sentQty ?? row.quantity ?? 1) : 0;
-                               const receivedAt = checked ? new Date().toISOString() : undefined;
-                               
-                               console.log(`Item ${row.id} - Received: ${checked}, receivedAt: ${receivedAt}, mrcNo: ${row.mrcNo || 'EMPTY'}`);
-                               
-                               // Update local state first
-                               const updatedRows = rows.map(r => 
-                                 r.id === row.id 
-                                   ? { ...r, receivedQty, receivedAt, mrcNo: checked ? (r.mrcNo || '') : '' }
-                                   : r
-                               );
-                               
-                               setRows(updatedRows);
-                               
-                               // Immediately save to database and update status
-                               if (checked) {
-                                 try {
-                                   // Save the updated items
-                                   await updateRequest(request.id, { items: updatedRows });
-                                   
-                                   // Update status to mcr-needed
-                                   await updateStatus(request.id, 'mcr-needed');
-                                   
-                                   console.log('Item marked as received and status updated to mcr-needed');
-                                   toast.success('Item marked as received. MCR NO. is now required.');
-                                 } catch (error) {
-                                   console.error('Error saving received status:', error);
-                                   toast.error('Failed to save received status');
-                                 }
-                               }
-                             }}
-                          />
-                         <Label htmlFor={`chk-${row.id}`}>Received</Label>
+                             }
+                           }}
+                         />
+                         <Label htmlFor={`chk-${row.id}`}>
+                           Received{row.receivedAt && ` (${format(new Date(row.receivedAt), 'dd/MM/yyyy')})`}
+                         </Label>
                        </div>
                      </TableCell>
                   </TableRow>
@@ -235,10 +302,32 @@ export default function SMReturnViewer({ open, onOpenChange, request }: SMReturn
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
-          <Button onClick={() => setSendOpen(true)}>Received</Button>
-        </DialogFooter>
+                 <DialogFooter>
+           {isReadOnly ? (
+             <div className="flex items-center gap-2 text-sm text-muted-foreground">
+               <span>This return request is {request.status === 'delivered' ? 'completed' : 'in transit'} and cannot be modified.</span>
+               <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
+             </div>
+           ) : (
+             <>
+               <Button 
+                 onClick={() => setSendOpen(true)} 
+                 disabled={!canMarkAsReceived}
+                 title={!canMarkAsReceived ? "Please enter MCR numbers for all received items before marking as received" : ""}
+               >
+                 Received
+               </Button>
+               {!canMarkAsReceived && (
+                 <Button 
+                   className="bg-blue-500 hover:bg-blue-600 text-white border-blue-500" 
+                   onClick={onConfirm}
+                 >
+                   Continue
+                 </Button>
+               )}
+             </>
+           )}
+         </DialogFooter>
       </DialogContent>
 
       {/* Send dialog */}

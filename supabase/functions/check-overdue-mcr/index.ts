@@ -32,14 +32,14 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    console.log("Fetching MRC requests with status 'mcr-needed'...");
+    console.log("Fetching MRC requests with status 'mrc-needed'...");
     
     // Get MRC requests that need MCR NO. entry
     const { data: mrcRequests, error } = await supabase
       .from('material_requests')
       .select('*')
       .eq('request_type', 'MRC')
-      .eq('status', 'mcr-needed');
+              .eq('status', 'mrc-needed');
 
     if (error) {
       console.error("Database error:", error);

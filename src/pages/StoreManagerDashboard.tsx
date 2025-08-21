@@ -30,7 +30,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 type ZoneOption = 'North' | 'South' | 'North East' | 'Army' | 'General';
-type StatusOption = 'pending' | 'approved' | 'in-process' | 'in-transit' | 'delivered' | 'rejected' | 'mcr-needed';
+type StatusOption = 'pending' | 'approved' | 'in-process' | 'in-transit' | 'delivered' | 'rejected' | 'mrc-needed';
 
 const StoreManagerDashboard = () => {
   const { state } = useAppStore();
@@ -214,8 +214,10 @@ const StoreManagerDashboard = () => {
     switch (status) {
       case 'pending': return 'bg-blue-100 text-blue-800 border-blue-200';
       case 'approved': return 'bg-green-100 text-green-800 border-green-200';
-      case 'in-transit': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'in-transit': return 'bg-blue-100 text-blue-800 border-blue-200';
       case 'delivered': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'partially-delivered': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'mrc-needed': return 'bg-red-100 text-red-800 border-red-200';
       case 'rejected': return 'bg-red-100 text-red-800 border-red-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
@@ -229,6 +231,22 @@ const StoreManagerDashboard = () => {
       case 'critical': return 'bg-red-100 text-red-800 border-red-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
+  };
+
+  const getActualStatus = (shipment: any) => {
+    if (shipment.status === 'delivered') {
+      const receivedItems = shipment.items.filter((item: any) => item.receivedAt);
+      const totalItems = shipment.items.length;
+      
+      if (receivedItems.length === 0) {
+        return 'delivered';
+      } else if (receivedItems.length < totalItems) {
+        return 'partially-delivered';
+      } else {
+        return 'delivered';
+      }
+    }
+    return shipment.status;
   };
 
   return (
@@ -445,8 +463,8 @@ const StoreManagerDashboard = () => {
                       <TableCell>{shipment.requestedBy}</TableCell>
                       <TableCell>{shipment.items.reduce((sum, i) => sum + (i.quantity || 0), 0)} items</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={getStatusColor(shipment.status)}>
-                          {shipment.status}
+                        <Badge variant="outline" className={getStatusColor(getActualStatus(shipment))}>
+                          {getActualStatus(shipment)}
                         </Badge>
                       </TableCell>
                       <TableCell>{shipment.sentAt ? format(new Date(shipment.sentAt), 'MMM dd, yyyy') : '—'}</TableCell>
@@ -490,7 +508,14 @@ const StoreManagerDashboard = () => {
                       </TableCell>
                     </TableRow>
                   ) : returnRequests.map((returnRequest) => (
-                    <TableRow key={returnRequest.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setSelectedId(returnRequest.id); setEditorOpen(true); }}>
+                    <TableRow 
+                      key={returnRequest.id} 
+                      className="cursor-pointer hover:bg-muted/50" 
+                      onClick={() => { 
+                        setSelectedId(returnRequest.id); 
+                        setEditorOpen(true); 
+                      }}
+                    >
                       <TableCell className="font-medium">
                         {returnRequest.seqId 
                           ? `MRC-${returnRequest.seqId.toString().padStart(3, '0')}`

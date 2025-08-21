@@ -2,11 +2,12 @@ import React, { createContext, useContext, useEffect, useMemo, useReducer } from
 import { supabase } from '@/integrations/supabase/client';
 import { notify } from '@/lib/notifications';
 import { useAuth } from '@/hooks/useAuth';
+import { useQueryClient } from '@tanstack/react-query';
 
 // Types
 export type SourceOption = 'Store' | 'CSD' | 'Site Purchase';
 export type UrgencyOption = 'Low' | 'Medium' | 'High';
-export type RequestStatus = 'pending' | 'approved' | 'in-process' | 'in-transit' | 'mcr-needed' | 'delivered' | 'rejected';
+export type RequestStatus = 'pending' | 'approved' | 'in-process' | 'in-transit' | 'mrc-needed' | 'delivered' | 'rejected';
 
 export interface MaterialItemRow {
   id: string; // unique per row
@@ -158,6 +159,7 @@ const AppStoreContext = createContext<{
 export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(reducer, initialState);
   const { user, department } = useAuth();
+  const queryClient = useQueryClient();
 
   // Init from localStorage
   useEffect(() => {
@@ -195,7 +197,7 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ticket_number: extra?.ticketNumber,
           zone: extra?.zone,
           description: extra?.description,
-          status: extra?.requestType === 'MRC' ? 'approved' : (extra?.initialStatus || 'pending'),
+          status: extra?.requestType === 'MRC' ? 'in-transit' : (extra?.initialStatus || 'pending'),
           transport_mode: extra?.transportMode,
           edt: extra?.edt,
           tracking_no: extra?.trackingNo,
@@ -210,7 +212,7 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const isMRC = extra?.requestType === 'MRC';
       const eventType = isMRC ? 'MRC_CREATED' : (isRMCreated ? 'MR_CREATED_BY_RM' : 'MR_CREATED_BY_ENGINEER');
       const targetDepartments = isMRC 
-        ? ['store_manager' as const] // MRC auto-approved, only notify store manager
+        ? ['store_manager' as const] // MRC auto-in-transit, only notify store manager
         : (isRMCreated ? ['store_manager' as const] : ['regional_manager' as const]);
 
       await notify({
@@ -222,7 +224,7 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ticketNumber: extra?.ticketNumber,
           zone: extra?.zone,
           description: extra?.description,
-          status: isMRC ? 'approved' : (extra?.initialStatus || 'pending'),
+          status: isMRC ? 'in-transit' : (extra?.initialStatus || 'pending'),
           requestedBy: state.currentUser || 'User',
           requesterEmail: user.email,
         },
@@ -234,7 +236,7 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         title, 
         items, 
         ...(extra || {}),
-        initialStatus: isMRC ? 'approved' : extra?.initialStatus
+        initialStatus: isMRC ? 'in-transit' : extra?.initialStatus
       } });
     } catch (error) {
       console.error('Error adding material request:', error);
@@ -339,6 +341,9 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
 
       dispatch({ type: 'UPDATE_STATUS', payload: { id, status } });
+      
+      // Invalidate React Query cache to ensure fresh data
+      queryClient.invalidateQueries({ queryKey: ['material-requests'] });
     } catch (error) {
       console.error('Error updating status:', error);
     }
@@ -367,6 +372,9 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // Update local state
       dispatch({ type: 'UPDATE_REQUEST', payload: { id, patch } });
+      
+      // Invalidate React Query cache to ensure fresh data
+      queryClient.invalidateQueries({ queryKey: ['material-requests'] });
     } catch (error) {
       console.error('Error updating request:', error);
     }

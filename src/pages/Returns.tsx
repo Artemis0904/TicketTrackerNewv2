@@ -8,11 +8,15 @@ import { ArrowLeft, Package, Clock, Truck, CheckCircle, RotateCcw } from 'lucide
 import { format } from 'date-fns';
 import { useMaterialRequests } from '@/hooks/useMaterialRequests';
 import { useAuth } from '@/hooks/useAuth';
+import { useState } from 'react';
+import EngineerReturnViewer from '@/components/EngineerReturnViewer';
 
 const Returns = () => {
   const navigate = useNavigate();
   const { requests, isLoading } = useMaterialRequests();
   const { user } = useAuth();
+  const [selectedReturnId, setSelectedReturnId] = useState<string | null>(null);
+  const [returnViewerOpen, setReturnViewerOpen] = useState(false);
 
   // Filter for MRC requests only for current user
   const myMRCRequests = requests.filter(r => r.requesterId === user?.id && r.requestType === 'MRC');
@@ -24,6 +28,7 @@ const Returns = () => {
       'delivered': 'bg-green-100 text-green-800',
       'in-process': 'bg-purple-100 text-purple-800',
       'approved': 'bg-green-100 text-green-800',
+      'mrc-needed': 'bg-red-100 text-red-800',
       'rejected': 'bg-red-100 text-red-800'
     };
 
@@ -116,7 +121,14 @@ const Returns = () => {
                     </TableCell>
                   </TableRow>
                 ) : myMRCRequests.map((returnRequest) => (
-                  <TableRow key={returnRequest.id}>
+                  <TableRow 
+                    key={returnRequest.id} 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => {
+                      setSelectedReturnId(returnRequest.id);
+                      setReturnViewerOpen(true);
+                    }}
+                  >
                     <TableCell className="font-medium">
                       {returnRequest.seqId 
                         ? `MRC-${returnRequest.seqId.toString().padStart(3, '0')}`
@@ -222,6 +234,18 @@ const Returns = () => {
           </Card>
         </div>
       </div>
+      
+      {/* Return Request Viewer */}
+      {selectedReturnId && (
+        <EngineerReturnViewer
+          open={returnViewerOpen}
+          onOpenChange={(open) => {
+            setReturnViewerOpen(open);
+            if (!open) setSelectedReturnId(null);
+          }}
+          request={requests.find(r => r.id === selectedReturnId)!}
+        />
+      )}
     </EngineerLayout>
   );
 };

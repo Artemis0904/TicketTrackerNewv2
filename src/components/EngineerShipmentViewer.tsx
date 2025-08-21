@@ -24,7 +24,8 @@ export default function EngineerShipmentViewer({ open, onOpenChange, request }: 
       const initReceived: Record<string, boolean> = {};
       const initSentQty: Record<string, number> = {};
       (request.items || []).forEach((it) => {
-        initReceived[it.id] = false;
+        // Check if item was already marked as received (has receivedQty or receivedAt)
+        initReceived[it.id] = !!(it.receivedQty || it.receivedAt);
         initSentQty[it.id] = it.sentQty || 0;
       });
       setReceivedMap(initReceived);
@@ -37,6 +38,11 @@ export default function EngineerShipmentViewer({ open, onOpenChange, request }: 
     [receivedMap]
   );
 
+  const someChecked = useMemo(
+    () => Object.values(receivedMap).some(Boolean) && !allChecked,
+    [receivedMap, allChecked]
+  );
+
   const handleToggle = (id: string, value: boolean) => {
     setReceivedMap((prev) => ({ ...prev, [id]: value }));
   };
@@ -46,13 +52,15 @@ export default function EngineerShipmentViewer({ open, onOpenChange, request }: 
   };
 
   const onConfirmReceived = async () => {
-    // Update items with sent quantities
+    // Update items with sent quantities and received status
     const updatedItems = request.items.map((item) => ({
       ...item,
       sentQty: sentQtyMap[item.id] || 0,
+      receivedQty: receivedMap[item.id] ? (sentQtyMap[item.id] || item.sentQty || 0) : 0,
+      receivedAt: receivedMap[item.id] ? new Date().toISOString() : undefined,
     }));
 
-    // Update the request with new sent quantities
+    // Update the request with new sent quantities and received status
     await updateRequest(request.id, { items: updatedItems });
 
     const missingItems = request.items.filter((it) => !receivedMap[it.id]);
@@ -65,7 +73,7 @@ export default function EngineerShipmentViewer({ open, onOpenChange, request }: 
           : it
       );
       await updateRequest(request.id, { items: patchedItems });
-      toast.error(`${missingItems.length} item(s) missing. Notification sent to Store Manager.`);
+      toast.error(`${missingItems.length} item(s) missing.`);
     } else {
       toast.success('All items received.');
     }
@@ -79,10 +87,31 @@ export default function EngineerShipmentViewer({ open, onOpenChange, request }: 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Shipment Details (Mark Received)</DialogTitle>
+          <DialogTitle>
+            Shipment Details (Mark Received)
+            {request.items.some(item => item.receivedAt) && !request.items.every(item => item.receivedAt) && (
+              <span className="ml-2 text-sm font-normal text-yellow-600">
+                - Partially Delivered
+              </span>
+            )}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
+          {request.items.every(item => item.receivedAt) && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+              <div className="text-sm text-green-800 font-medium">
+                ✅ All items have been received and processed
+              </div>
+            </div>
+          )}
+          {request.items.some(item => item.receivedAt) && !request.items.every(item => item.receivedAt) && (
+            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+              <div className="text-sm text-yellow-800 font-medium">
+                ⚠️ Partially Delivered - Some items are missing
+              </div>
+            </div>
+          )}
           <div className="rounded-md border">
             <Table>
               <TableHeader>
@@ -92,12 +121,33 @@ export default function EngineerShipmentViewer({ open, onOpenChange, request }: 
                   <TableHead className="w-32">Required Qty</TableHead>
                   <TableHead className="w-40">Approved Qty</TableHead>
                   <TableHead className="w-40">Sent Qty</TableHead>
-                  <TableHead className="w-40">Received</TableHead>
+                  <TableHead className="w-40">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="select-all"
+                        checked={allChecked}
+                        ref={(el) => {
+                          if (el) {
+                            el.indeterminate = someChecked;
+                          }
+                        }}
+                        onCheckedChange={(checked) => {
+                          const newReceivedMap: Record<string, boolean> = {};
+                          request.items.forEach((item) => {
+                            newReceivedMap[item.id] = !!checked;
+                          });
+                          setReceivedMap(newReceivedMap);
+                        }}
+                        disabled={request.items.every(item => item.receivedAt)} // Disable if all items already received
+                      />
+                      <Label htmlFor="select-all">Received</Label>
+                    </div>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {request.items.map((row, idx) => (
-                  <TableRow key={row.id}>
+                  <TableRow key={row.id} className={receivedMap[row.id] ? 'opacity-75 bg-muted/30' : ''}>
                     <TableCell>{idx + 1}</TableCell>
                     <TableCell>{row.description}</TableCell>
                     <TableCell>{row.quantity ?? 0}</TableCell>
@@ -110,6 +160,7 @@ export default function EngineerShipmentViewer({ open, onOpenChange, request }: 
                         onChange={(e) => handleSentQtyChange(row.id, Number(e.target.value) || 0)}
                         className="w-20"
                         placeholder="0"
+                        disabled={receivedMap[row.id]}
                       />
                     </TableCell>
                     <TableCell>
@@ -118,8 +169,16 @@ export default function EngineerShipmentViewer({ open, onOpenChange, request }: 
                           id={`chk-${row.id}`}
                           checked={!!receivedMap[row.id]}
                           onCheckedChange={(v) => handleToggle(row.id, Boolean(v))}
+                          disabled={row.receivedAt} // Disable if already received in database
                         />
-                        <Label htmlFor={`chk-${row.id}`}>Received</Label>
+                        <Label htmlFor={`chk-${row.id}`}>
+                          Received
+                          {row.receivedAt && (
+                            <span className="ml-1 text-xs text-muted-foreground">
+                              ({new Date(row.receivedAt).toLocaleDateString()})
+                            </span>
+                          )}
+                        </Label>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -127,11 +186,17 @@ export default function EngineerShipmentViewer({ open, onOpenChange, request }: 
               </TableBody>
             </Table>
           </div>
+
         </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
-          <Button onClick={onConfirmReceived} disabled={request.items.length === 0}>Received</Button>
+          <Button 
+            onClick={onConfirmReceived} 
+            disabled={request.items.length === 0 || request.items.every(item => item.receivedAt)}
+          >
+            Received
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

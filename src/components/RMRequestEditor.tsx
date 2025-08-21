@@ -28,12 +28,22 @@ export default function RMRequestEditor({ open, onOpenChange, request }: RMReque
   const [description, setDescription] = useState(request.description || '');
   const [rows, setRows] = useState<MaterialItemRow[]>(request.items || []);
 
+  // Check if the request is processed (read-only mode)
+  // Processed requests are those that are not pending (approved, in-process, in-transit, delivered, etc.)
+  const isReadOnly = request.status !== 'pending';
+
   useEffect(() => {
     if (open) {
       setTicketNumber(request.ticketNumber || '');
       setZone(((request.zone as ZoneOption) || (userZone as ZoneOption) || 'North'));
       setDescription(request.description || '');
-      setRows(request.items || []);
+      
+      // Set approved quantity to match required quantity if not already set
+      const itemsWithDefaultApprovedQty = (request.items || []).map(item => ({
+        ...item,
+        approvedQty: item.approvedQty !== undefined ? item.approvedQty : item.quantity
+      }));
+      setRows(itemsWithDefaultApprovedQty);
     }
   }, [open, request, userZone]);
 
@@ -69,21 +79,35 @@ export default function RMRequestEditor({ open, onOpenChange, request }: RMReque
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(isOpen) => {
+      if (!isOpen && !isReadOnly) {
+        // Save changes when closing only if not read-only
+        updateRequest(request.id, { 
+          items: rows, 
+          ticketNumber: ticketNumber.trim(), 
+          zone, 
+          description: description.trim() 
+        });
+      }
+      onOpenChange(isOpen);
+    }}>
       <DialogContent className="max-w-5xl">
         <DialogHeader>
-          <DialogTitle>Edit Material Request</DialogTitle>
+          <DialogTitle>
+            {isReadOnly ? 'View Material Request' : 'Edit Material Request'}
+            {isReadOnly && <span className="text-sm font-normal text-muted-foreground ml-2">(Read Only)</span>}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="ticket-number">Ticket Number</Label>
-            <Input id="ticket-number" value={ticketNumber} onChange={(e) => setTicketNumber(e.target.value)} placeholder="e.g., TKT-00123" />
+            <Input id="ticket-number" value={ticketNumber} onChange={(e) => setTicketNumber(e.target.value)} placeholder="e.g., TKT-00123" disabled={isReadOnly} />
           </div>
 
                       <div className="space-y-2">
               <Label htmlFor="zone">Zone</Label>
-              <Select value={zone} onValueChange={(v) => setZone(v as ZoneOption)} disabled>
+              <Select value={zone} onValueChange={(v) => setZone(v as ZoneOption)} disabled={true}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select zone" />
                 </SelectTrigger>
@@ -118,6 +142,7 @@ export default function RMRequestEditor({ open, onOpenChange, request }: RMReque
                         value={row.description}
                         onChange={(e) => onChangeRow(row.id, { description: e.target.value })}
                         placeholder="Describe the item"
+                        disabled={isReadOnly}
                       />
                     </TableCell>
                     <TableCell>
@@ -127,10 +152,11 @@ export default function RMRequestEditor({ open, onOpenChange, request }: RMReque
                         value={row.quantity || ''}
                         onChange={(e) => onChangeRow(row.id, { quantity: Number(e.target.value) })}
                         placeholder="0"
+                        disabled={isReadOnly}
                       />
                     </TableCell>
                     <TableCell>
-                      <Select value={row.source} onValueChange={(v) => onChangeRow(row.id, { source: v as MaterialItemRow['source'] })}>
+                      <Select value={row.source} onValueChange={(v) => onChangeRow(row.id, { source: v as MaterialItemRow['source'] })} disabled={isReadOnly}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select source" />
                         </SelectTrigger>
@@ -142,7 +168,7 @@ export default function RMRequestEditor({ open, onOpenChange, request }: RMReque
                       </Select>
                     </TableCell>
                     <TableCell>
-                      <Select value={row.urgency} onValueChange={(v) => onChangeRow(row.id, { urgency: v as MaterialItemRow['urgency'] })}>
+                      <Select value={row.urgency} onValueChange={(v) => onChangeRow(row.id, { urgency: v as MaterialItemRow['urgency'] })} disabled={isReadOnly}>
                         <SelectTrigger>
                           <SelectValue placeholder="Urgency" />
                         </SelectTrigger>
@@ -159,7 +185,8 @@ export default function RMRequestEditor({ open, onOpenChange, request }: RMReque
                         min={0}
                         value={row.approvedQty ?? ''}
                         onChange={(e) => onChangeRow(row.id, { approvedQty: Number(e.target.value) })}
-                        placeholder="0"
+                        placeholder={row.quantity?.toString() || "0"}
+                        disabled={isReadOnly}
                       />
                     </TableCell>
                   </TableRow>
@@ -175,13 +202,23 @@ export default function RMRequestEditor({ open, onOpenChange, request }: RMReque
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Add any additional details for this request"
+              disabled={isReadOnly}
             />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={onApprove} disabled={!canSave}>Approve</Button>
+          {isReadOnly ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>This request has been processed and cannot be modified.</span>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
+            </div>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button onClick={onApprove} disabled={!canSave}>Approve</Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

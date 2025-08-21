@@ -13,6 +13,7 @@ import { useAuth } from '@/hooks/useAuth';
 import MRFormDialog from '@/components/MRFormDialog';
 import MRCFormDialog from '@/components/MRCFormDialog';
 import EngineerShipmentViewer from '@/components/EngineerShipmentViewer';
+import EngineerRequestViewer from '@/components/EngineerRequestViewer';
 
 const EngineerDashboard = () => {
   const navigate = useNavigate();
@@ -21,6 +22,8 @@ const EngineerDashboard = () => {
   const { user } = useAuth();
   const [shipOpen, setShipOpen] = useState(false);
   const [selectedShipId, setSelectedShipId] = useState<string | null>(null);
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
 
   // Filter requests for current user - ONLY MR requests (exclude MRC)
   const myRequests = requests.filter(r => r.requesterId === user?.id && r.requestType === 'MR');
@@ -35,6 +38,7 @@ const EngineerDashboard = () => {
       pending: 'bg-yellow-100 text-yellow-800',
       'in-transit': 'bg-blue-100 text-blue-800',
       delivered: 'bg-green-100 text-green-800',
+      'partially-delivered': 'bg-yellow-100 text-yellow-800',
       shipped: 'bg-blue-100 text-blue-800',
       'in-process': 'bg-indigo-100 text-indigo-800',
       rejected: 'bg-red-100 text-red-800',
@@ -55,6 +59,22 @@ const EngineerDashboard = () => {
       default:
         return <Clock className="h-4 w-4 text-gray-600" />;
     }
+  };
+
+  const getActualStatus = (shipment: any) => {
+    if (shipment.status === 'delivered') {
+      const receivedItems = shipment.items.filter((item: any) => item.receivedAt);
+      const totalItems = shipment.items.length;
+      
+      if (receivedItems.length === 0) {
+        return { status: 'delivered', icon: <Package className="h-4 w-4 text-green-600" /> };
+      } else if (receivedItems.length < totalItems) {
+        return { status: 'partially-delivered', icon: <Package className="h-4 w-4 text-yellow-600" /> };
+      } else {
+        return { status: 'delivered', icon: <Package className="h-4 w-4 text-green-600" /> };
+      }
+    }
+    return { status: shipment.status, icon: getStatusIcon(shipment.status) };
   };
 
   return (
@@ -113,7 +133,7 @@ const EngineerDashboard = () => {
                     <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">No active material requests found</TableCell>
                   </TableRow>
                 ) : myActiveRequests.map((ticket) => (
-                  <TableRow key={ticket.id}>
+                  <TableRow key={ticket.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setSelectedRequestId(ticket.id); setRequestOpen(true); }}>
                     <TableCell className="font-medium">
                       {ticket.seqId 
                         ? (ticket.requestType === 'MRC' ? `MRC-${ticket.seqId.toString().padStart(3, '0')}` : `MR-${ticket.seqId.toString().padStart(3, '0')}`)
@@ -182,8 +202,15 @@ const EngineerDashboard = () => {
                     <TableCell>{shipment.items.reduce((sum, i) => sum + (i.quantity || 0), 0)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        {getStatusIcon(shipment.status)}
-                        {getStatusBadge(shipment.status)}
+                        {(() => {
+                          const actualStatus = getActualStatus(shipment);
+                          return (
+                            <>
+                              {actualStatus.icon}
+                              {getStatusBadge(actualStatus.status)}
+                            </>
+                          );
+                        })()}
                       </div>
                     </TableCell>
                     <TableCell>{shipment.sentAt ? format(new Date(shipment.sentAt), 'MMM dd, yyyy') : '—'}</TableCell>
@@ -200,6 +227,13 @@ const EngineerDashboard = () => {
             open={shipOpen}
             onOpenChange={(o) => { setShipOpen(o); if (!o) setSelectedShipId(null); }}
             request={requests.find(r => r.id === selectedShipId)!}
+          />
+        )}
+        {selectedRequestId && (
+          <EngineerRequestViewer
+            open={requestOpen}
+            onOpenChange={(o) => { setRequestOpen(o); if (!o) setSelectedRequestId(null); }}
+            request={requests.find(r => r.id === selectedRequestId)!}
           />
         )}
       </div>

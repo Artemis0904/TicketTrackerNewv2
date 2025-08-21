@@ -31,9 +31,17 @@ export default function SMRequestViewer({ open, onOpenChange, request }: SMReque
   const [tracking, setTracking] = useState<string>(request.trackingNo || '');
   const [courierName, setCourierName] = useState<string>('');
 
+  // Check if the request is delivered or in-transit (read-only mode)
+  const isReadOnly = request.status === 'delivered' || request.status === 'in-transit';
+
   useEffect(() => {
     if (open) {
-      setRows(request.items || []);
+      // Set sent quantity to match approved quantity if not already set
+      const itemsWithDefaultSentQty = (request.items || []).map(item => ({
+        ...item,
+        sentQty: item.sentQty !== undefined ? item.sentQty : item.approvedQty
+      }));
+      setRows(itemsWithDefaultSentQty);
       setMode(request.transportMode as TransportMode | undefined);
       setEdt(request.edt ? new Date(request.edt) : undefined);
       setTracking(request.trackingNo || '');
@@ -87,10 +95,19 @@ export default function SMRequestViewer({ open, onOpenChange, request }: SMReque
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(isOpen) => {
+      if (!isOpen && !isReadOnly) {
+        // Save changes when closing only if not read-only
+        updateRequest(request.id, { items: rows });
+      }
+      onOpenChange(isOpen);
+    }}>
       <DialogContent className="max-w-6xl">
         <DialogHeader>
-          <DialogTitle>Request Details (Read-only)</DialogTitle>
+          <DialogTitle>
+            Request Details
+            {isReadOnly && <span className="text-sm font-normal text-muted-foreground ml-2">(Read Only)</span>}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -134,7 +151,7 @@ export default function SMRequestViewer({ open, onOpenChange, request }: SMReque
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Select value={row.source} onValueChange={(v) => onChangeRow(row.id, { source: v as SourceOption })}>
+                      <Select value={row.source} onValueChange={(v) => onChangeRow(row.id, { source: v as SourceOption })} disabled={isReadOnly}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select source" />
                         </SelectTrigger>
@@ -157,7 +174,8 @@ export default function SMRequestViewer({ open, onOpenChange, request }: SMReque
                         min={0}
                         value={row.sentQty ?? ''}
                         onChange={(e) => onChangeRow(row.id, { sentQty: Number(e.target.value) })}
-                        placeholder="0"
+                        placeholder={row.approvedQty?.toString() || "0"}
+                        disabled={isReadOnly}
                       />
                     </TableCell>
                     <TableCell>
@@ -165,6 +183,7 @@ export default function SMRequestViewer({ open, onOpenChange, request }: SMReque
                         value={row.mrfNo ?? ''}
                         onChange={(e) => onChangeRow(row.id, { mrfNo: e.target.value })}
                         placeholder="Enter MRF No."
+                        disabled={isReadOnly}
                       />
                     </TableCell>
                     <TableCell>
@@ -172,7 +191,7 @@ export default function SMRequestViewer({ open, onOpenChange, request }: SMReque
                         value={row.mifNo ?? ''}
                         onChange={(e) => onChangeRow(row.id, { mifNo: e.target.value })}
                         placeholder="Enter MiF No."
-                        disabled={row.source !== 'Store'}
+                        disabled={isReadOnly || row.source !== 'Store'}
                       />
                     </TableCell>
                     <TableCell>
@@ -180,6 +199,7 @@ export default function SMRequestViewer({ open, onOpenChange, request }: SMReque
                         value={row.remarks ?? ''}
                         onChange={(e) => onChangeRow(row.id, { remarks: e.target.value })}
                         placeholder="Remarks"
+                        disabled={isReadOnly}
                       />
                     </TableCell>
                   </TableRow>
@@ -190,8 +210,17 @@ export default function SMRequestViewer({ open, onOpenChange, request }: SMReque
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
-          <Button onClick={() => setSendOpen(true)}>Sent</Button>
+          {isReadOnly ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>This shipment is {request.status === 'delivered' ? 'delivered' : 'in transit'} and cannot be modified.</span>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
+            </div>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
+              <Button onClick={() => setSendOpen(true)}>Sent</Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
 
