@@ -16,6 +16,8 @@ export type Database = {
     Tables: {
       material_requests: {
         Row: {
+          approved_at: string | null
+          courier_name: string | null
           created_at: string
           description: string | null
           edt: string | null
@@ -38,6 +40,8 @@ export type Database = {
           zone: string | null
         }
         Insert: {
+          approved_at?: string | null
+          courier_name?: string | null
           created_at?: string
           description?: string | null
           edt?: string | null
@@ -60,6 +64,8 @@ export type Database = {
           zone?: string | null
         }
         Update: {
+          approved_at?: string | null
+          courier_name?: string | null
           created_at?: string
           description?: string | null
           edt?: string | null

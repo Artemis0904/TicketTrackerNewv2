@@ -15,7 +15,9 @@ import {
   TruckIcon,
   PlusIcon,
   RotateCcwIcon,
-  PackageIcon
+  PackageIcon,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import { useMaterialRequests } from '@/hooks/useMaterialRequests';
@@ -46,6 +48,9 @@ const RegionalManagerDashboard = () => {
   const [viewerOpen, setViewerOpen] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [statusFilter, setStatusFilter] = React.useState<string>('all');
+  const [pendingPage, setPendingPage] = React.useState(1);
+  const [otherPage, setOtherPage] = React.useState(1);
+  const [mrcPage, setMrcPage] = React.useState(1);
   const selectedRequest = React.useMemo(() => requests.find(r => r.id === selectedId) || null, [selectedId, requests]);
 
   // Filter other requests based on selected status
@@ -55,6 +60,127 @@ const RegionalManagerDashboard = () => {
     }
     return otherRequests.filter(request => request.status === statusFilter);
   }, [otherRequests, statusFilter]);
+
+  // Pagination constants
+  const ITEMS_PER_PAGE = 10;
+
+  // Pagination functions
+  const getPaginatedData = (data: any[], page: number) => {
+    const startIndex = (page - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    return data.slice(startIndex, endIndex);
+  };
+
+  const getTotalPages = (data: any[]) => {
+    return Math.ceil(data.length / ITEMS_PER_PAGE);
+  };
+
+  const getPageNumbers = (currentPage: number, totalPages: number) => {
+    const pages = [];
+    const maxVisiblePages = 5;
+    
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 3; i <= totalPages; i++) {
+          pages.push(i);
+        }
+      } else {
+        pages.push(1);
+        pages.push('...');
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  // Paginated data
+  const paginatedPendingRequests = getPaginatedData(pendingRequests, pendingPage);
+  const paginatedFilteredOtherRequests = getPaginatedData(filteredOtherRequests, otherPage);
+  const paginatedMrcRequests = getPaginatedData(mrcRequests, mrcPage);
+
+  // Pagination component
+  const Pagination = ({ 
+    currentPage, 
+    totalPages, 
+    onPageChange, 
+    totalItems 
+  }: { 
+    currentPage: number; 
+    totalPages: number; 
+    onPageChange: (page: number) => void; 
+    totalItems: number;
+  }) => {
+    if (totalPages <= 1) return null;
+
+    const pageNumbers = getPageNumbers(currentPage, totalPages);
+    const startItem = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+    const endItem = Math.min(currentPage * ITEMS_PER_PAGE, totalItems);
+
+    return (
+      <div className="flex items-center justify-between mt-4">
+        <div className="text-sm text-muted-foreground">
+          Showing {startItem} to {endItem} of {totalItems} results
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Previous
+          </Button>
+          
+          <div className="flex items-center gap-1">
+            {pageNumbers.map((page, index) => (
+              <div key={index}>
+                {page === '...' ? (
+                  <span className="px-2 py-1 text-sm text-muted-foreground">...</span>
+                ) : (
+                  <Button
+                    variant={currentPage === page ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => onPageChange(page as number)}
+                    className="w-8 h-8 p-0"
+                  >
+                    {page}
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    );
+  };
 
   const handleDeleteRequest = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -208,12 +334,12 @@ const RegionalManagerDashboard = () => {
                         <TableRow>
                           <TableCell colSpan={7} className="text-center">Loading...</TableCell>
                         </TableRow>
-                      ) : pendingRequests.length === 0 ? (
+                      ) : paginatedPendingRequests.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={7} className="text-center">No pending requests found</TableCell>
                         </TableRow>
                       ) : (
-                        pendingRequests.map((request) => (
+                        paginatedPendingRequests.map((request) => (
                           <TableRow key={request.id} className="cursor-pointer" onClick={() => { setSelectedId(request.id); setEditorOpen(true); }}>
                             <TableCell className="font-medium">
                               {request.seqId 
@@ -241,6 +367,12 @@ const RegionalManagerDashboard = () => {
                       )}
                     </TableBody>
                   </Table>
+                  <Pagination 
+                    currentPage={pendingPage} 
+                    totalPages={getTotalPages(pendingRequests)} 
+                    onPageChange={setPendingPage} 
+                    totalItems={pendingRequests.length} 
+                  />
                 </div>
               </TabsContent>
 
@@ -262,7 +394,7 @@ const RegionalManagerDashboard = () => {
                     </Select>
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    Showing {filteredOtherRequests.length} of {otherRequests.length} requests
+                    Showing {paginatedFilteredOtherRequests.length} of {filteredOtherRequests.length} requests
                   </div>
                 </div>
                 <div className="overflow-x-auto">
@@ -283,14 +415,14 @@ const RegionalManagerDashboard = () => {
                         <TableRow>
                           <TableCell colSpan={7} className="text-center">Loading...</TableCell>
                         </TableRow>
-                      ) : filteredOtherRequests.length === 0 ? (
+                      ) : paginatedFilteredOtherRequests.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={7} className="text-center">
                             {statusFilter === 'all' ? 'No other requests found' : `No ${statusFilter} requests found`}
                           </TableCell>
                         </TableRow>
                       ) : (
-                        filteredOtherRequests.map((request) => (
+                        paginatedFilteredOtherRequests.map((request) => (
                           <TableRow key={request.id} className="cursor-pointer" onClick={() => { setSelectedId(request.id); setEditorOpen(true); }}>
                             <TableCell className="font-medium">
                               {request.seqId 
@@ -318,6 +450,12 @@ const RegionalManagerDashboard = () => {
                       )}
                     </TableBody>
                   </Table>
+                  <Pagination 
+                    currentPage={otherPage} 
+                    totalPages={getTotalPages(filteredOtherRequests)} 
+                    onPageChange={setOtherPage} 
+                    totalItems={filteredOtherRequests.length} 
+                  />
                 </div>
               </TabsContent>
 
@@ -340,12 +478,12 @@ const RegionalManagerDashboard = () => {
                         <TableRow>
                           <TableCell colSpan={7} className="text-center">Loading...</TableCell>
                         </TableRow>
-                      ) : mrcRequests.length === 0 ? (
+                      ) : paginatedMrcRequests.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={7} className="text-center">No MRC requests found</TableCell>
                         </TableRow>
                       ) : (
-                        mrcRequests.map((request) => (
+                        paginatedMrcRequests.map((request) => (
                           <TableRow key={request.id} className="cursor-pointer" onClick={() => { setSelectedId(request.id); setEditorOpen(true); }}>
                             <TableCell className="font-medium">
                               {request.seqId 
@@ -373,6 +511,12 @@ const RegionalManagerDashboard = () => {
                       )}
                     </TableBody>
                   </Table>
+                  <Pagination 
+                    currentPage={mrcPage} 
+                    totalPages={getTotalPages(mrcRequests)} 
+                    onPageChange={setMrcPage} 
+                    totalItems={mrcRequests.length} 
+                  />
                 </div>
               </TabsContent>
             </Tabs>

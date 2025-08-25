@@ -58,7 +58,7 @@ export default function SMReturnViewer({ open, onOpenChange, request }: SMReturn
       setMode(request.transportMode as TransportMode | undefined);
       setEdt(request.edt ? new Date(request.edt) : undefined);
       setTracking(request.trackingNo || '');
-      setCourierName('');
+      setCourierName(request.courierName || '');
     }
   }, [open, request]);
 
@@ -112,6 +112,7 @@ export default function SMReturnViewer({ open, onOpenChange, request }: SMReturn
       // Then update transport details and mark as sent
       await updateRequest(request.id, {
         transportMode: mode,
+        courierName: mode === 'Courier' ? courierName.trim() : undefined,
         edt: edt ? edt.toISOString() : undefined,
         trackingNo: tracking.trim() || undefined,
         sentAt: new Date().toISOString(),
@@ -129,8 +130,10 @@ export default function SMReturnViewer({ open, onOpenChange, request }: SMReturn
   const onConfirmReceived = async () => {
     try {
       // Use the actual received quantities from the form
-      console.log('Saving items with received status:', rows);
-      await updateRequest(request.id, { items: rows });
+      await updateRequest(request.id, { 
+        items: rows,
+        receivedAt: new Date().toISOString() // Set the received date
+      });
       await updateStatus(request.id, 'delivered');
       toast.success('Request marked as received.');
       setSendOpen(false);

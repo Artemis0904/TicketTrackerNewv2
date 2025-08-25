@@ -20,7 +20,7 @@ interface RMRequestEditorProps {
 type ZoneOption = 'North' | 'South' | 'North East' | 'Army' | 'General';
 
 export default function RMRequestEditor({ open, onOpenChange, request }: RMRequestEditorProps) {
-  const { updateRequest, updateStatus } = useAppStore();
+  const { updateRequest, approveRequest } = useAppStore();
   const { zone: userZone } = useAuth();
 
   const [ticketNumber, setTicketNumber] = useState(request.ticketNumber || '');
@@ -56,8 +56,8 @@ export default function RMRequestEditor({ open, onOpenChange, request }: RMReque
     // First update the request with any changes
     updateRequest(request.id, { items: rows, ticketNumber: ticketNumber.trim(), zone, description: description.trim() });
     
-    // Then approve the request
-    updateStatus(request.id, 'approved');
+    // Then approve the request (this will set approved_at timestamp)
+    approveRequest(request.id);
     await notify({
       eventType: 'MR_APPROVED',
       zone: request.zone,

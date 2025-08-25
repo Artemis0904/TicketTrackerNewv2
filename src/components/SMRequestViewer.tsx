@@ -45,7 +45,7 @@ export default function SMRequestViewer({ open, onOpenChange, request }: SMReque
       setMode(request.transportMode as TransportMode | undefined);
       setEdt(request.edt ? new Date(request.edt) : undefined);
       setTracking(request.trackingNo || '');
-      setCourierName('');
+      setCourierName(request.courierName || '');
     }
   }, [open, request]);
 
@@ -84,6 +84,7 @@ export default function SMRequestViewer({ open, onOpenChange, request }: SMReque
     // Then update transport details and mark as sent
     updateRequest(request.id, {
       transportMode: mode,
+      courierName: mode === 'Courier' ? courierName.trim() : undefined,
       edt: edt ? edt.toISOString() : undefined,
       trackingNo: tracking.trim() || undefined,
       sentAt: new Date().toISOString(),

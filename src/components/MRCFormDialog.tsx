@@ -76,6 +76,18 @@ export default function MRCFormDialog({ trigger }: MRCFormDialogProps) {
   const onDeleteRow = (id: string) => setRows(prev => prev.filter(r => r.id !== id));
   const onChangeRow = (id: string, patch: Partial<MaterialItemRow>) => setRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
 
+  const resetForm = () => {
+    setTicketNumber('');
+    setZone((userZone as ZoneOption) || 'North');
+    setDescription('');
+    setRows(defaultRows());
+    setShowTransportDialog(false);
+    setTransportMode('Train');
+    setEdt(undefined);
+    setTrackingNo('');
+    setCourierName('');
+  };
+
   const onSubmit = async () => {
     const filtered = rows.filter(r => r.description.trim() && (r.returnQty || 0) > 0);
     if (filtered.length === 0) return;
@@ -83,32 +95,50 @@ export default function MRCFormDialog({ trigger }: MRCFormDialogProps) {
   };
 
   const onFinalSubmit = async () => {
-    const filtered = rows.filter(r => r.description.trim() && (r.returnQty || 0) > 0);
-    if (filtered.length === 0) return;
-    
-    // Map returnQty to quantity for MRC items
-    const mappedItems = filtered.map(item => ({
-      ...item,
-      quantity: item.returnQty || 0, // Use returnQty as quantity for MRC
-    }));
-    
-    const reqTitle = ticketNumber.trim() ? `MRC ${ticketNumber.trim()}` : `MRC (${filtered.length} item${filtered.length > 1 ? 's' : ''})`;
-    
-    const extra = {
-      ticketNumber: ticketNumber.trim(),
-      zone,
-      description: description.trim(),
-      requesterEmail: user?.email ?? undefined,
-      requesterId: user?.id ?? undefined,
-      requestType: 'MRC' as const,
-      transportMode,
-      ...(transportMode === 'Courier' ? { trackingNo } : { edt: edt?.toISOString() }),
-    };
+    if (transportMode === 'Courier' && (!trackingNo.trim() || !courierName.trim())) {
+      toast.error('Please enter both tracking number and courier name for courier transport.');
+      return;
+    }
+    if ((transportMode === 'Train' || transportMode === 'Bus') && !edt) {
+      toast.error('Please select EDT for train/bus transport.');
+      return;
+    }
 
-    addMaterialRequest(reqTitle, mappedItems, extra);
-    toast.success('MRC submitted successfully.');
-    setOpen(false);
-    setShowTransportDialog(false);
+    try {
+      const filtered = rows.filter(r => r.description.trim() && (r.returnQty || 0) > 0);
+      if (filtered.length === 0) {
+        toast.error('Please add at least one item with description and return quantity.');
+        return;
+      }
+      
+      // Map returnQty to quantity for MRC items
+      const mappedItems = filtered.map(item => ({
+        ...item,
+        quantity: item.returnQty || 0, // Use returnQty as quantity for MRC
+      }));
+      
+      const reqTitle = ticketNumber.trim() ? `MRC ${ticketNumber.trim()}` : `MRC (${filtered.length} item${filtered.length > 1 ? 's' : ''})`;
+
+      await addMaterialRequest(reqTitle, mappedItems, {
+        ticketNumber: ticketNumber.trim(),
+        zone,
+        description: description.trim(),
+        requesterEmail: user?.email ?? undefined,
+        requesterId: user?.id ?? undefined,
+        requestType: 'MRC',
+        transportMode,
+        courierName: transportMode === 'Courier' ? courierName.trim() : undefined,
+        ...(transportMode === 'Courier' ? { trackingNo } : { edt: edt?.toISOString() }),
+      });
+      
+      toast.success('MRC request created successfully!');
+      setShowTransportDialog(false);
+      setOpen(false);
+      resetForm();
+    } catch (error) {
+      console.error('Error creating MRC request:', error);
+      toast.error('Failed to create MRC request');
+    }
   };
 
   return (

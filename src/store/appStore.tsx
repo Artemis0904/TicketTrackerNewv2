@@ -45,11 +45,15 @@ export interface MaterialRequest {
   ticketNumber?: string;
   zone?: string;
   description?: string;
+  // Approval metadata
+  approvedAt?: string; // ISO datetime when approved by regional manager
   // Shipment metadata
   transportMode?: 'Train' | 'Bus' | 'Courier';
+  courierName?: string; // courier name when transport mode is Courier
   edt?: string; // ISO date for estimated delivery time/date
   trackingNo?: string;
   sentAt?: string; // ISO datetime when marked as sent
+  receivedAt?: string; // ISO datetime when items were received
 }
 
 interface AppState {
@@ -59,13 +63,13 @@ interface AppState {
 
 // Actions
  type Action =
-  | { type: 'INIT_FROM_STORAGE'; payload: AppState }
+  | { type: 'INIT_FROM_STORAGE'; payload: Partial<AppState> }
   | { type: 'SET_CURRENT_USER'; payload: string | null }
-  | { type: 'ADD_REQUEST'; payload: { title: string; items: MaterialItemRow[]; ticketNumber?: string; zone?: string; description?: string; initialStatus?: RequestStatus; requesterEmail?: string; requesterId?: string; transportMode?: 'Train' | 'Bus' | 'Courier'; edt?: string; trackingNo?: string; requestType?: 'MR' | 'MRC' } }
+  | { type: 'ADD_REQUEST'; payload: { title: string; items: MaterialItemRow[]; ticketNumber?: string; zone?: string; description?: string; initialStatus?: RequestStatus; requesterEmail?: string; requesterId?: string; transportMode?: 'Train' | 'Bus' | 'Courier'; courierName?: string; edt?: string; trackingNo?: string; requestType?: 'MR' | 'MRC' } }
   | { type: 'APPROVE_REQUEST'; payload: { id: string } }
   | { type: 'REJECT_REQUEST'; payload: { id: string } }
   | { type: 'UPDATE_STATUS'; payload: { id: string; status: RequestStatus } }
-  | { type: 'UPDATE_REQUEST'; payload: { id: string; patch: Partial<Pick<MaterialRequest, 'items' | 'ticketNumber' | 'zone' | 'description' | 'title' | 'transportMode' | 'edt' | 'trackingNo' | 'sentAt'>> } };
+  | { type: 'UPDATE_REQUEST'; payload: { id: string; patch: Partial<Pick<MaterialRequest, 'items' | 'ticketNumber' | 'zone' | 'description' | 'title' | 'transportMode' | 'courierName' | 'edt' | 'trackingNo' | 'sentAt' | 'receivedAt'>> } };
 const initialState: AppState = {
   materialRequests: [],
   currentUser: null,
@@ -81,7 +85,7 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, currentUser: action.payload };
     case 'ADD_REQUEST': {
       const username = state.currentUser || localStorage.getItem('currentUser') || 'Engineer';
-      const { title, items, ticketNumber, zone, description, initialStatus, requesterEmail, requesterId, transportMode, edt, trackingNo, requestType } = action.payload;
+      const { title, items, ticketNumber, zone, description, initialStatus, requesterEmail, requesterId, transportMode, courierName, edt, trackingNo, requestType } = action.payload;
       const newReq: MaterialRequest = {
         id: 0, // Will be set by database SERIAL
         title,
@@ -96,6 +100,7 @@ function reducer(state: AppState, action: Action): AppState {
         zone,
         description,
         transportMode,
+        courierName,
         edt,
         trackingNo,
       };
@@ -104,7 +109,11 @@ function reducer(state: AppState, action: Action): AppState {
     case 'APPROVE_REQUEST': {
       return {
         ...state,
-        materialRequests: state.materialRequests.map(r => r.id === action.payload.id ? { ...r, status: 'approved' } : r)
+        materialRequests: state.materialRequests.map(r => r.id === action.payload.id ? { 
+          ...r, 
+          status: 'approved',
+          approvedAt: new Date().toISOString()
+        } : r)
       };
     }
     case 'REJECT_REQUEST': {
@@ -145,6 +154,7 @@ const AppStoreContext = createContext<{
       requesterEmail?: string;
       requesterId?: string;
       transportMode?: 'Train' | 'Bus' | 'Courier';
+      courierName?: string;
       edt?: string;
       trackingNo?: string;
       requestType?: 'MR' | 'MRC';
@@ -153,7 +163,7 @@ const AppStoreContext = createContext<{
   approveRequest: (id: string) => void;
   rejectRequest: (id: string) => void;
   updateStatus: (id: string, status: RequestStatus) => void;
-  updateRequest: (id: string, patch: Partial<Pick<MaterialRequest, 'items' | 'ticketNumber' | 'zone' | 'description' | 'title' | 'transportMode' | 'edt' | 'trackingNo' | 'sentAt'>>) => void;
+  updateRequest: (id: string, patch: Partial<Pick<MaterialRequest, 'items' | 'ticketNumber' | 'zone' | 'description' | 'title' | 'transportMode' | 'courierName' | 'edt' | 'trackingNo' | 'sentAt' | 'receivedAt'>>) => void;
   setCurrentUser: (username: string | null) => void;
 } | null>(null);
 export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -181,7 +191,7 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ currentUser, materialRequests }));
   }, [state.currentUser, state.materialRequests]);
 
-  const addMaterialRequest = async (title: string, items: MaterialItemRow[], extra?: { ticketNumber?: string; zone?: string; description?: string; initialStatus?: RequestStatus; requesterEmail?: string; requesterId?: string; transportMode?: 'Train' | 'Bus' | 'Courier'; edt?: string; trackingNo?: string; requestType?: 'MR' | 'MRC' }) => {
+  const addMaterialRequest = async (title: string, items: MaterialItemRow[], extra?: { ticketNumber?: string; zone?: string; description?: string; initialStatus?: RequestStatus; requesterEmail?: string; requesterId?: string; transportMode?: 'Train' | 'Bus' | 'Courier'; courierName?: string; edt?: string; trackingNo?: string; requestType?: 'MR' | 'MRC' }) => {
     if (!user) return;
     
     try {
@@ -199,6 +209,7 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           description: extra?.description,
           status: extra?.requestType === 'MRC' ? 'in-transit' : (extra?.initialStatus || 'pending'),
           transport_mode: extra?.transportMode,
+          courier_name: extra?.courierName,
           edt: extra?.edt,
           tracking_no: extra?.trackingNo,
         })
@@ -247,7 +258,10 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       const { error } = await supabase
         .from('material_requests')
-        .update({ status: 'approved' })
+        .update({ 
+          status: 'approved',
+          approved_at: new Date().toISOString()
+        })
         .eq('id', id);
 
       if (error) throw error;
@@ -279,6 +293,9 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
 
       dispatch({ type: 'APPROVE_REQUEST', payload: { id } });
+      
+      // Invalidate and refetch the material requests query
+      queryClient.invalidateQueries({ queryKey: ['material-requests'] });
     } catch (error) {
       console.error('Error approving request:', error);
     }
@@ -349,7 +366,7 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const updateRequest = async (id: string, patch: Partial<Pick<MaterialRequest, 'items' | 'ticketNumber' | 'zone' | 'description' | 'title' | 'transportMode' | 'edt' | 'trackingNo' | 'sentAt'>>) => {
+  const updateRequest = async (id: string, patch: Partial<Pick<MaterialRequest, 'items' | 'ticketNumber' | 'zone' | 'description' | 'title' | 'transportMode' | 'courierName' | 'edt' | 'trackingNo' | 'sentAt' | 'receivedAt'>>) => {
     try {
       // Update in Supabase
       const updateData: any = {};
@@ -359,9 +376,11 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (patch.description) updateData.description = patch.description;
       if (patch.title) updateData.title = patch.title;
       if (patch.transportMode) updateData.transport_mode = patch.transportMode;
+      if (patch.courierName) updateData.courier_name = patch.courierName;
       if (patch.edt) updateData.edt = patch.edt;
       if (patch.trackingNo) updateData.tracking_no = patch.trackingNo;
       if (patch.sentAt) updateData.sent_at = patch.sentAt;
+      if (patch.receivedAt) updateData.received_at = patch.receivedAt;
 
       const { error } = await supabase
         .from('material_requests')

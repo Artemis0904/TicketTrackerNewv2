@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, FileText, Clock, CheckCircle, Truck, Plus } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Package, FileText, Clock, CheckCircle, Truck, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '@/store/appStore';
 import { useMaterialRequests } from '@/hooks/useMaterialRequests';
@@ -25,12 +26,72 @@ const EngineerDashboard = () => {
   const [requestOpen, setRequestOpen] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
 
+  // Pagination state for each tab
+  const [pendingPage, setPendingPage] = useState(1);
+  const [approvedPage, setApprovedPage] = useState(1);
+  const [shipmentPage, setShipmentPage] = useState(1);
+
   // Filter requests for current user - ONLY MR requests (exclude MRC)
   const myRequests = requests.filter(r => r.requesterId === user?.id && r.requestType === 'MR');
   const myShipments = myRequests.filter((r) => (r.status === 'in-transit' || r.status === 'delivered'));
   
-  // Filter out in-transit and delivered requests from myRequests to avoid duplication
-  const myActiveRequests = myRequests.filter((r) => r.status !== 'in-transit' && r.status !== 'delivered');
+  // Filter requests for tabs
+  const pendingRequests = myRequests.filter(r => r.status === 'pending');
+  const approvedRequests = myRequests.filter(r => r.status === 'approved');
+
+  // Pagination constants
+  const ITEMS_PER_PAGE = 10;
+
+  // Pagination functions
+  const getPaginatedData = (data: any[], page: number) => {
+    const startIndex = (page - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    return data.slice(startIndex, endIndex);
+  };
+
+  const getTotalPages = (data: any[]) => {
+    return Math.ceil(data.length / ITEMS_PER_PAGE);
+  };
+
+  const getPageNumbers = (currentPage: number, totalPages: number) => {
+    const pages = [];
+    const maxVisiblePages = 5;
+    
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 3; i <= totalPages; i++) {
+          pages.push(i);
+        }
+      } else {
+        pages.push(1);
+        pages.push('...');
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  // Paginated data
+  const paginatedPendingRequests = getPaginatedData(pendingRequests, pendingPage);
+  const paginatedApprovedRequests = getPaginatedData(approvedRequests, approvedPage);
+  const paginatedShipments = getPaginatedData(myShipments, shipmentPage);
 
   const getStatusBadge = (status: string) => {
     const colors: Record<string, string> = {
@@ -77,6 +138,73 @@ const EngineerDashboard = () => {
     return { status: shipment.status, icon: getStatusIcon(shipment.status) };
   };
 
+  // Pagination component
+  const Pagination = ({ 
+    currentPage, 
+    totalPages, 
+    onPageChange, 
+    totalItems 
+  }: { 
+    currentPage: number; 
+    totalPages: number; 
+    onPageChange: (page: number) => void; 
+    totalItems: number;
+  }) => {
+    if (totalPages <= 1) return null;
+
+    const pageNumbers = getPageNumbers(currentPage, totalPages);
+    const startItem = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+    const endItem = Math.min(currentPage * ITEMS_PER_PAGE, totalItems);
+
+    return (
+      <div className="flex items-center justify-between mt-4">
+        <div className="text-sm text-muted-foreground">
+          Showing {startItem} to {endItem} of {totalItems} results
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Previous
+          </Button>
+          
+          <div className="flex items-center gap-1">
+            {pageNumbers.map((page, index) => (
+              <div key={index}>
+                {page === '...' ? (
+                  <span className="px-2 py-1 text-sm text-muted-foreground">...</span>
+                ) : (
+                  <Button
+                    variant={currentPage === page ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => onPageChange(page as number)}
+                    className="w-8 h-8 p-0"
+                  >
+                    {page}
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <EngineerLayout>
       <div className="space-y-6">
@@ -113,50 +241,124 @@ const EngineerDashboard = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Ticket ID</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Items</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Date Raised</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-4">Loading requests...</TableCell>
-                  </TableRow>
-                ) : myActiveRequests.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">No active material requests found</TableCell>
-                  </TableRow>
-                ) : myActiveRequests.map((ticket) => (
-                  <TableRow key={ticket.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setSelectedRequestId(ticket.id); setRequestOpen(true); }}>
-                    <TableCell className="font-medium">
-                      {ticket.seqId 
-                        ? (ticket.requestType === 'MRC' ? `MRC-${ticket.seqId.toString().padStart(3, '0')}` : `MR-${ticket.seqId.toString().padStart(3, '0')}`)
-                        : ticket.id.slice(-8)
-                      }
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{ticket.title}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{ticket.items.reduce((sum, i) => sum + (i.quantity || 0), 0)} items</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(ticket.status)}
-                        {getStatusBadge(ticket.status)}
-                      </div>
-                    </TableCell>
-                    <TableCell>{format(new Date(ticket.createdAt), 'MMM dd, yyyy')}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <Tabs defaultValue="pending" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="pending" className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  Pending Requests ({pendingRequests.length})
+                </TabsTrigger>
+                <TabsTrigger value="approved" className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4" />
+                  Approved Requests ({approvedRequests.length})
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="pending" className="mt-6">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Ticket ID</TableHead>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Items</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Date Raised</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {isLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-4">Loading requests...</TableCell>
+                      </TableRow>
+                    ) : paginatedPendingRequests.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">No pending requests found</TableCell>
+                      </TableRow>
+                    ) : paginatedPendingRequests.map((ticket) => (
+                      <TableRow key={ticket.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setSelectedRequestId(ticket.id); setRequestOpen(true); }}>
+                        <TableCell className="font-medium">
+                          {ticket.seqId 
+                            ? (ticket.requestType === 'MRC' ? `MRC-${ticket.seqId.toString().padStart(3, '0')}` : `MR-${ticket.seqId.toString().padStart(3, '0')}`)
+                            : ticket.id.slice(-8)
+                          }
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{ticket.title}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{ticket.items.reduce((sum, i) => sum + (i.quantity || 0), 0)} items</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {getStatusIcon(ticket.status)}
+                            {getStatusBadge(ticket.status)}
+                          </div>
+                        </TableCell>
+                        <TableCell>{format(new Date(ticket.createdAt), 'MMM dd, yyyy')}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <Pagination
+                  currentPage={pendingPage}
+                  totalPages={getTotalPages(pendingRequests)}
+                  onPageChange={setPendingPage}
+                  totalItems={pendingRequests.length}
+                />
+              </TabsContent>
+
+              <TabsContent value="approved" className="mt-6">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Ticket ID</TableHead>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Items</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Date Raised</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {isLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-4">Loading requests...</TableCell>
+                      </TableRow>
+                    ) : paginatedApprovedRequests.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">No approved requests found</TableCell>
+                      </TableRow>
+                    ) : paginatedApprovedRequests.map((ticket) => (
+                      <TableRow key={ticket.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setSelectedRequestId(ticket.id); setRequestOpen(true); }}>
+                        <TableCell className="font-medium">
+                          {ticket.seqId 
+                            ? (ticket.requestType === 'MRC' ? `MRC-${ticket.seqId.toString().padStart(3, '0')}` : `MR-${ticket.seqId.toString().padStart(3, '0')}`)
+                            : ticket.id.slice(-8)
+                          }
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{ticket.title}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{ticket.items.reduce((sum, i) => sum + (i.quantity || 0), 0)} items</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {getStatusIcon(ticket.status)}
+                            {getStatusBadge(ticket.status)}
+                          </div>
+                        </TableCell>
+                        <TableCell>{format(new Date(ticket.createdAt), 'MMM dd, yyyy')}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <Pagination
+                  currentPage={approvedPage}
+                  totalPages={getTotalPages(approvedRequests)}
+                  onPageChange={setApprovedPage}
+                  totalItems={approvedRequests.length}
+                />
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
 
@@ -186,11 +388,11 @@ const EngineerDashboard = () => {
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-4">Loading shipments...</TableCell>
                   </TableRow>
-                ) : myShipments.length === 0 ? (
+                ) : paginatedShipments.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-4 text-muted-foreground">No shipments found</TableCell>
                   </TableRow>
-                ) : myShipments.map((shipment) => (
+                ) : paginatedShipments.map((shipment) => (
                   <TableRow key={shipment.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setSelectedShipId(shipment.id); setShipOpen(true); }}>
                     <TableCell className="font-medium">
                       {shipment.seqId 
@@ -220,6 +422,12 @@ const EngineerDashboard = () => {
                 ))}
               </TableBody>
             </Table>
+            <Pagination
+              currentPage={shipmentPage}
+              totalPages={getTotalPages(myShipments)}
+              onPageChange={setShipmentPage}
+              totalItems={myShipments.length}
+            />
           </CardContent>
         </Card>
         {selectedShipId && (

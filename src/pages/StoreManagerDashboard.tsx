@@ -17,7 +17,9 @@ import {
   RotateCcwIcon,
   FilterIcon,
   ChevronDownIcon,
-  XIcon
+  XIcon,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import StatsCard from '@/components/StatsCard';
 import { useAppStore } from '@/store/appStore';
@@ -39,6 +41,9 @@ const StoreManagerDashboard = () => {
   const [selectedStatuses, setSelectedStatuses] = useState<StatusOption[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [approvedPage, setApprovedPage] = useState(1);
+  const [shipmentPage, setShipmentPage] = useState(1);
+  const [returnPage, setReturnPage] = useState(1);
   const selectedRequest = selectedId ? requests.find(r => r.id === selectedId) : null;
 
   // Filter requests based on selected zones and statuses
@@ -65,6 +70,60 @@ const StoreManagerDashboard = () => {
   const approved = filteredRequests.filter(r => r.status === 'approved' && r.requestType !== 'MRC');
   const shipments = filteredRequests.filter(r => (r.status === 'in-transit' || r.status === 'delivered') && r.requestType !== 'MRC');
   const returnRequests = filteredRequests.filter(r => r.requestType === 'MRC');
+
+  // Pagination constants
+  const ITEMS_PER_PAGE = 10;
+
+  // Pagination functions
+  const getPaginatedData = (data: any[], page: number) => {
+    const startIndex = (page - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    return data.slice(startIndex, endIndex);
+  };
+
+  const getTotalPages = (data: any[]) => {
+    return Math.ceil(data.length / ITEMS_PER_PAGE);
+  };
+
+  const getPageNumbers = (currentPage: number, totalPages: number) => {
+    const pages = [];
+    const maxVisiblePages = 5;
+    
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 3; i <= totalPages; i++) {
+          pages.push(i);
+        }
+      } else {
+        pages.push(1);
+        pages.push('...');
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  // Paginated data
+  const paginatedApprovedRequests = getPaginatedData(approved, approvedPage);
+  const paginatedShipments = getPaginatedData(shipments, shipmentPage);
+  const paginatedReturnRequests = getPaginatedData(returnRequests, returnPage);
 
   // Get available zones from requests for the filter dropdown
   const availableZones = useMemo(() => {
@@ -103,6 +162,73 @@ const StoreManagerDashboard = () => {
   const clearAllFilters = () => {
     setSelectedZones([]);
     setSelectedStatuses([]);
+  };
+
+  // Pagination component
+  const Pagination = ({ 
+    currentPage, 
+    totalPages, 
+    onPageChange, 
+    totalItems 
+  }: { 
+    currentPage: number; 
+    totalPages: number; 
+    onPageChange: (page: number) => void; 
+    totalItems: number;
+  }) => {
+    if (totalPages <= 1) return null;
+
+    const pageNumbers = getPageNumbers(currentPage, totalPages);
+    const startItem = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+    const endItem = Math.min(currentPage * ITEMS_PER_PAGE, totalItems);
+
+    return (
+      <div className="flex items-center justify-between mt-4">
+        <div className="text-sm text-muted-foreground">
+          Showing {startItem} to {endItem} of {totalItems} results
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Previous
+          </Button>
+          
+          <div className="flex items-center gap-1">
+            {pageNumbers.map((page, index) => (
+              <div key={index}>
+                {page === '...' ? (
+                  <span className="px-2 py-1 text-sm text-muted-foreground">...</span>
+                ) : (
+                  <Button
+                    variant={currentPage === page ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => onPageChange(page as number)}
+                    className="w-8 h-8 p-0"
+                  >
+                    {page}
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    );
   };
 
   // Multi-select Zone Component
@@ -388,9 +514,9 @@ const StoreManagerDashboard = () => {
               <div className="space-y-4">
                 {isLoading ? (
                   <div className="text-center py-8">Loading requests...</div>
-                ) : approved.length === 0 ? (
+                ) : paginatedApprovedRequests.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">No approved requests found</div>
-                ) : approved.slice(0, 20).map((request) => (
+                ) : paginatedApprovedRequests.map((request) => (
                   <div key={request.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => { setSelectedId(request.id); setEditorOpen(true); }}>
                     <div className="space-y-2 flex-1">
                       <div className="flex items-start justify-between">
@@ -427,6 +553,12 @@ const StoreManagerDashboard = () => {
                   </div>
                 ))}
               </div>
+              <Pagination
+                currentPage={approvedPage}
+                totalPages={getTotalPages(approved)}
+                onPageChange={setApprovedPage}
+                totalItems={approved.length}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -454,11 +586,11 @@ const StoreManagerDashboard = () => {
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-4">Loading shipments...</TableCell>
                     </TableRow>
-                  ) : shipments.length === 0 ? (
+                  ) : paginatedShipments.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-4 text-muted-foreground">No shipments found</TableCell>
                     </TableRow>
-                  ) : shipments.map((shipment) => (
+                  ) : paginatedShipments.map((shipment) => (
                     <TableRow key={shipment.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setSelectedId(shipment.id); setEditorOpen(true); }}>
                       <TableCell className="font-medium">
                         {shipment.seqId 
@@ -480,6 +612,12 @@ const StoreManagerDashboard = () => {
                   ))}
                 </TableBody>
               </Table>
+              <Pagination
+                currentPage={shipmentPage}
+                totalPages={getTotalPages(shipments)}
+                onPageChange={setShipmentPage}
+                totalItems={shipments.length}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -508,13 +646,13 @@ const StoreManagerDashboard = () => {
                     <TableRow>
                       <TableCell colSpan={8} className="text-center py-4">Loading return requests...</TableCell>
                     </TableRow>
-                  ) : returnRequests.length === 0 ? (
+                  ) : paginatedReturnRequests.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={8} className="text-center py-4 text-muted-foreground">
                         No return requests found. 
                       </TableCell>
                     </TableRow>
-                  ) : returnRequests.map((returnRequest) => (
+                  ) : paginatedReturnRequests.map((returnRequest) => (
                     <TableRow 
                       key={returnRequest.id} 
                       className="cursor-pointer hover:bg-muted/50" 
@@ -587,6 +725,12 @@ const StoreManagerDashboard = () => {
                   ))}
                 </TableBody>
               </Table>
+              <Pagination
+                currentPage={returnPage}
+                totalPages={getTotalPages(returnRequests)}
+                onPageChange={setReturnPage}
+                totalItems={returnRequests.length}
+              />
             </CardContent>
           </Card>
         </TabsContent>

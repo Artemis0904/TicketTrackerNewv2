@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Package, Clock, Truck, CheckCircle, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Package, Clock, Truck, CheckCircle, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { useMaterialRequests } from '@/hooks/useMaterialRequests';
 import { useAuth } from '@/hooks/useAuth';
@@ -17,9 +17,62 @@ const Returns = () => {
   const { user } = useAuth();
   const [selectedReturnId, setSelectedReturnId] = useState<string | null>(null);
   const [returnViewerOpen, setReturnViewerOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Filter for MRC requests only for current user
   const myMRCRequests = requests.filter(r => r.requesterId === user?.id && r.requestType === 'MRC');
+
+  // Pagination constants
+  const ITEMS_PER_PAGE = 10;
+
+  // Pagination functions
+  const getPaginatedData = (data: any[], page: number) => {
+    const startIndex = (page - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    return data.slice(startIndex, endIndex);
+  };
+
+  const getTotalPages = (data: any[]) => {
+    return Math.ceil(data.length / ITEMS_PER_PAGE);
+  };
+
+  const getPageNumbers = (currentPage: number, totalPages: number) => {
+    const pages = [];
+    const maxVisiblePages = 5;
+    
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 3; i <= totalPages; i++) {
+          pages.push(i);
+        }
+      } else {
+        pages.push(1);
+        pages.push('...');
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  // Paginated data
+  const paginatedMRCRequests = getPaginatedData(myMRCRequests, currentPage);
 
   const getStatusBadge = (status: string) => {
     const colors = {
@@ -69,6 +122,73 @@ const Returns = () => {
     }, 0);
   }, 0);
 
+  // Pagination component
+  const Pagination = ({ 
+    currentPage, 
+    totalPages, 
+    onPageChange, 
+    totalItems 
+  }: { 
+    currentPage: number; 
+    totalPages: number; 
+    onPageChange: (page: number) => void; 
+    totalItems: number;
+  }) => {
+    if (totalPages <= 1) return null;
+
+    const pageNumbers = getPageNumbers(currentPage, totalPages);
+    const startItem = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+    const endItem = Math.min(currentPage * ITEMS_PER_PAGE, totalItems);
+
+    return (
+      <div className="flex items-center justify-between mt-4">
+        <div className="text-sm text-muted-foreground">
+          Showing {startItem} to {endItem} of {totalItems} results
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Previous
+          </Button>
+          
+          <div className="flex items-center gap-1">
+            {pageNumbers.map((page, index) => (
+              <div key={index}>
+                {page === '...' ? (
+                  <span className="px-2 py-1 text-sm text-muted-foreground">...</span>
+                ) : (
+                  <Button
+                    variant={currentPage === page ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => onPageChange(page as number)}
+                    className="w-8 h-8 p-0"
+                  >
+                    {page}
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <EngineerLayout>
       <div className="space-y-6">
@@ -114,13 +234,13 @@ const Returns = () => {
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-4">Loading return requests...</TableCell>
                   </TableRow>
-                ) : myMRCRequests.length === 0 ? (
+                ) : paginatedMRCRequests.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-4 text-muted-foreground">
                       No material return requests found
                     </TableCell>
                   </TableRow>
-                ) : myMRCRequests.map((returnRequest) => (
+                ) : paginatedMRCRequests.map((returnRequest) => (
                   <TableRow 
                     key={returnRequest.id} 
                     className="cursor-pointer hover:bg-muted/50"
@@ -192,6 +312,12 @@ const Returns = () => {
                 ))}
               </TableBody>
             </Table>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={getTotalPages(myMRCRequests)}
+              onPageChange={setCurrentPage}
+              totalItems={myMRCRequests.length}
+            />
           </CardContent>
         </Card>
 
